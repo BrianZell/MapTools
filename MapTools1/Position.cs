@@ -58,5 +58,20 @@ namespace MapTools
         {
             return new Position(X-1,Y,Z);
         }
+
+        public override string ToString()
+        {
+            return string.Format("{{x:{0},y:{1},z:{2}}}",X,Y,Z);
+        }
+
+        public static bool operator ==(Position a, Position b)
+        {
+            return Equals(a, b);
+        }
+
+        public static bool operator !=(Position a, Position b)
+        {
+            return !(a == b);
+        }
     }
 }

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -54,7 +55,7 @@ namespace MapTools.Test
             var sut = new ShortestPath(new Map());
             var results = sut.FindPath(startPosition, 1);
 
-            Assert.That(results.Select(x => x.EndPosition), Is.EquivalentTo(expectedResults));
+            Assert.That(Sort(results.Select(x => x.EndPosition)), Is.EquivalentTo(Sort(expectedResults)));
         }
 
         [Test]
@@ -81,6 +82,49 @@ namespace MapTools.Test
             
             Assert.That(Sort(results.Select(x => x.EndPosition)), Is.EquivalentTo(Sort(expectedResults)));
             results.ToList().ForEach(Console.WriteLine);
+        }
+
+
+        /*
+         * 5|_|_|_|_|_|
+         * 4|_|_|_|_|_|
+         * 3|_|_|X|_|_|
+         * 2|_|_|_|_|_|
+         * 1|_|_|_|_|_|
+         *   1 2 3 4 5
+         */
+        [TestCase(3, 2, 1)]
+        [TestCase(3, 4, 1)]
+        [TestCase(2, 3, 1)]
+        [TestCase(4, 3, 1)]
+        [TestCase(4, 4, 1.5)]
+        [TestCase(2, 2, 1.5)]
+        [TestCase(2, 4, 1.5)]
+        [TestCase(4, 2, 1.5)]
+        [TestCase(3, 1, 2)]
+        [TestCase(3, 5, 2)]
+        [TestCase(1, 3, 2)]
+        [TestCase(5, 3, 2)]
+        [TestCase(4, 1, 2.5)]
+        [TestCase(2, 1, 2.5)]
+        [TestCase(4, 5, 2.5)]
+        [TestCase(2, 5, 2.5)]
+        [TestCase(1, 2, 2.5)]
+        [TestCase(1, 4, 2.5)]
+        [TestCase(5, 4, 2.5)]
+        [TestCase(5, 2, 2.5)]
+        public void FindPath_WhenDistanceIsFourFromPos3x3_ReturnsAdjacentSpacesByShortestPath(int x, int y, decimal expectedMaxDistance)
+        {
+            var positionToCheck = new Position(x, y, 0);
+
+            var startPosition = new Position(3, 3, 0);
+            var sut = new ShortestPath(new Map());
+            var results = sut.FindPath(startPosition, 4);
+
+
+            var path = results.Single(p => p.EndPosition == positionToCheck);
+            path.PathPositions.ToList().ForEach(p => Debug.WriteLine(p));
+            Assert.That(path.Distance, Is.LessThanOrEqualTo(expectedMaxDistance));
         }
 
         public IOrderedEnumerable<Position> Sort(IEnumerable<Position> positions)
@@ -112,7 +156,7 @@ namespace MapTools.Test
             this.StartPosition = source.StartPosition;
             this.EndPosition = position;
             this.Distance = source.Distance + distance;
-            this._pathPositions.Add(position);
+            this._pathPositions.AddRange(source._pathPositions.Concat(new [] {position}));
         }
 
         public override string ToString()
@@ -179,10 +223,13 @@ namespace MapTools.Test
 
         public IEnumerable<Path> FindPath(Position start, decimal distance)
         {
-            return FindPaths(new Path(start), distance, new List<Position>(new [] {start}));
+            var newPath = new Path(start);
+            var resultDict = new Dictionary<Position, Path> {{newPath.EndPosition, newPath}};
+            FindPaths(new Path(start), distance, resultDict);
+            return resultDict.Values.Where(x => x.Distance > 0).OrderBy(x => x.Distance);
         }
 
-        private IEnumerable<Path> FindPaths(Path path, decimal distance, List<Position> coveredPositions)
+        private void FindPaths(Path path, decimal distance, Dictionary<Position,Path> coveredPositions)
         {
             var adjacentSpaces = new List<Path>
                        {
@@ -196,15 +243,29 @@ namespace MapTools.Test
                            path.SouthEast(),
                        };
 
-            var validAdjacentSpaces = adjacentSpaces
-                                        .Where(x => x.Distance <= distance && !coveredPositions.Contains(x.EndPosition))
+            var inRangeAdjacentSpaces = adjacentSpaces
+                                        .Where(x => x.Distance <= distance)
                                         .ToList();
 
-            coveredPositions.AddRange(validAdjacentSpaces.Select(x => x.EndPosition));
-            var results = new List<Path>(validAdjacentSpaces);
-            results.AddRange(validAdjacentSpaces.SelectMany(x => FindPaths(x, distance, coveredPositions)));
+            var validAdjacentSpaces = new List<Path>();
+            foreach (var inRangeAdjacentSpace in inRangeAdjacentSpaces)
+            {
+                if (coveredPositions.ContainsKey(inRangeAdjacentSpace.EndPosition))
+                {
+                    if (coveredPositions[inRangeAdjacentSpace.EndPosition].Distance > inRangeAdjacentSpace.Distance)
+                    {
+                        coveredPositions[inRangeAdjacentSpace.EndPosition] = inRangeAdjacentSpace;
+                        validAdjacentSpaces.Add(inRangeAdjacentSpace);
+                    }
+                }
+                else
+                {
+                    coveredPositions.Add(inRangeAdjacentSpace.EndPosition,inRangeAdjacentSpace);
+                    validAdjacentSpaces.Add(inRangeAdjacentSpace);
+                }
+            }
 
-            return results;
+            validAdjacentSpaces.ForEach(x => FindPaths(x,distance,coveredPositions));
         }
     }
 }
