@@ -2,40 +2,26 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Moq;
 using NUnit.Framework;
 
 namespace MapTools.Test
 {
-    public class PathTests
-    {
-        [Test]
-        public void SingleItemPath_SetsStartPosition()
-        {
-            var startPos = new Position(1, 1, 1);
-            var sut = new Path(startPos);
-            
-            Assert.That(sut.StartPosition, Is.EqualTo(startPos));
-        }
-
-        [Test]
-        public void SingleItemPath_SetsEndPosition()
-        {
-            var startPos = new Position(1, 1, 1);
-            var sut = new Path(startPos);
-
-            Assert.That(sut.EndPosition, Is.EqualTo(startPos));
-        }
-    }
-
     public class ShortestPathTests
     {
+        private Mock<IAllowsMovement> _mockMap = new Mock<IAllowsMovement>();
+
+        [SetUp]
+        public void SetUp()
+        {
+            _mockMap.Setup(x => x.IsAllowedPosition(It.IsAny<Position>())).Returns(true);
+        }
+
         [Test]
         public void FindPath_StartPosition_IsTheSameAsProvidedStartPosition()
         {
             var startPosition = new Position(3, 3, 0);
-            var sut = new ShortestPath(new Map());
+            var sut = new ShortestPath(_mockMap.Object);
             var results = sut.FindPath(startPosition, 1);
 
             Assert.That(results.Select(x => x.StartPosition).Distinct().Single(), Is.EqualTo(startPosition));
@@ -52,7 +38,7 @@ namespace MapTools.Test
                                        };
 
             var startPosition = new Position(3, 3, 0);
-            var sut = new ShortestPath(new Map());
+            var sut = new ShortestPath(_mockMap.Object);
             var results = sut.FindPath(startPosition, 1);
 
             Assert.That(Sort(results.Select(x => x.EndPosition)), Is.EquivalentTo(Sort(expectedResults)));
@@ -77,195 +63,77 @@ namespace MapTools.Test
                                        };
 
             var startPosition = new Position(3, 3, 0);
-            var sut = new ShortestPath(new Map());
+            var sut = new ShortestPath(_mockMap.Object);
             var results = sut.FindPath(startPosition, 2);
             
             Assert.That(Sort(results.Select(x => x.EndPosition)), Is.EquivalentTo(Sort(expectedResults)));
             results.ToList().ForEach(Console.WriteLine);
         }
 
-
-        /*
-         * 5|_|_|_|_|_|
+        /* 5|_|_|_|_|_|
          * 4|_|_|_|_|_|
          * 3|_|_|X|_|_|
          * 2|_|_|_|_|_|
          * 1|_|_|_|_|_|
-         *   1 2 3 4 5
-         */
-        [TestCase(3, 2, 1)]
-        [TestCase(3, 4, 1)]
-        [TestCase(2, 3, 1)]
-        [TestCase(4, 3, 1)]
-        [TestCase(4, 4, 1.5)]
-        [TestCase(2, 2, 1.5)]
-        [TestCase(2, 4, 1.5)]
-        [TestCase(4, 2, 1.5)]
-        [TestCase(3, 1, 2)]
-        [TestCase(3, 5, 2)]
-        [TestCase(1, 3, 2)]
-        [TestCase(5, 3, 2)]
-        [TestCase(4, 1, 2.5)]
-        [TestCase(2, 1, 2.5)]
-        [TestCase(4, 5, 2.5)]
-        [TestCase(2, 5, 2.5)]
-        [TestCase(1, 2, 2.5)]
-        [TestCase(1, 4, 2.5)]
-        [TestCase(5, 4, 2.5)]
-        [TestCase(5, 2, 2.5)]
-        public void FindPath_WhenDistanceIsFourFromPos3x3_ReturnsAdjacentSpacesByShortestPath(int x, int y, decimal expectedMaxDistance)
+         *   1 2 3 4 5  */
+        [TestCase(1, 5, 3),   TestCase(2, 5, 2.5), TestCase(3, 5, 2), TestCase(4, 5, 2.5), TestCase(5, 5, 3)]
+        [TestCase(1, 4, 2.5), TestCase(2, 4, 1.5), TestCase(3, 4, 1), TestCase(4, 4, 1.5), TestCase(5, 4, 2.5)]
+        [TestCase(1, 3, 2),   TestCase(2, 3, 1),                      TestCase(4, 3, 1),   TestCase(5, 3, 2)]
+        [TestCase(1, 2, 2.5), TestCase(2, 2, 1.5), TestCase(3, 2, 1), TestCase(4, 2, 1.5), TestCase(5, 2, 2.5)]
+        [TestCase(1, 1, 3),   TestCase(2, 1, 2.5), TestCase(3, 1, 2), TestCase(4, 1, 2.5), TestCase(5, 1, 3)]
+        public void FindPath_WhenDistanceIsThreeFromPos3x3_ReturnsAdjacentSpacesByShortestPath(int x, int y, decimal expectedMaxDistance)
         {
             var positionToCheck = new Position(x, y, 0);
 
             var startPosition = new Position(3, 3, 0);
-            var sut = new ShortestPath(new Map());
-            var results = sut.FindPath(startPosition, 4);
+            var sut = new ShortestPath(_mockMap.Object);
+            var results = sut.FindPath(startPosition, 3);
 
 
             var path = results.Single(p => p.EndPosition == positionToCheck);
             path.PathPositions.ToList().ForEach(p => Debug.WriteLine(p));
-            Assert.That(path.Distance, Is.LessThanOrEqualTo(expectedMaxDistance));
+            Assert.That(path.Distance, Is.InRange(expectedMaxDistance - 0.25M, expectedMaxDistance));
+        }
+
+        [Test]
+        public void FindPath_WhenPathIsBlocked_DoesNotIncludedBlockedPositions()
+        {
+            var position = new Position(3, 3, 0);
+            _mockMap.Setup(t => t.IsAllowedPosition(position)).Returns(false);
+            var sut = new ShortestPath(_mockMap.Object);
+            var results = sut.FindPath(position.North(), 3);
+
+            var path = results.SingleOrDefault(t => t.EndPosition == position);
+            Assert.That(path, Is.Null);
+        }
+
+        /* 5|_|_|_|_|_|
+         * 4|_|_|_|O|_|
+         * 3|_|O|X|_|_|
+         * 2|_|_|O|_|_|
+         * 1|_|_|_|_|_|
+         *   1 2 3 4 5  */
+        [TestCase(1, 5, 3),   TestCase(2, 5, 2.5), TestCase(3, 5, 2), TestCase(4, 5, 2.5), TestCase(5, 5, 3.5)]
+        [TestCase(1, 4, 2.5), TestCase(2, 4, 1.5), TestCase(3, 4, 1),                      TestCase(5, 4, 2.5)]
+        [TestCase(1, 3, 3),                                           TestCase(4, 3, 1),   TestCase(5, 3, 2)]
+        [TestCase(1, 2, 2.5), TestCase(2, 2, 1.5),                    TestCase(4, 2, 1.5), TestCase(5, 2, 2.5)]
+        [TestCase(1, 1, 3),   TestCase(2, 1, 2.5), TestCase(3, 1, 3), TestCase(4, 1, 2.5), TestCase(5, 1, 3)]
+        public void FindPath_WhenPathIsBlockedNavigatesAroundBlocks_ReturnsAdjacentSpacesByShortestPath(int x, int y, decimal expectedMaxDistance)
+        {
+            _mockMap.Setup(t => t.IsAllowedPosition(new Position(2, 3, 0))).Returns(false);
+            _mockMap.Setup(t => t.IsAllowedPosition(new Position(3, 2, 0))).Returns(false);
+            _mockMap.Setup(t => t.IsAllowedPosition(new Position(4, 4, 0))).Returns(false);
+            var sut = new ShortestPath(_mockMap.Object);
+            var results = sut.FindPath(new Position(3, 3, 0), 4);
+
+            var path = results.Single(p => p.EndPosition == new Position(x, y, 0));
+            path.PathPositions.ToList().ForEach(p => Debug.WriteLine(p));
+            Assert.That(path.Distance, Is.InRange(expectedMaxDistance - 0.25M, expectedMaxDistance));
         }
 
         public IOrderedEnumerable<Position> Sort(IEnumerable<Position> positions)
         {
             return positions.OrderBy(p => p.X).ThenBy(p => p.Y).ThenBy(p => p.Z);
-        }
-    }
-
-    public class Map
-    {
-    }
-
-    public class Path
-    {
-        private const decimal StraightDistance = 1.0M;
-        private const decimal DiagonalDistance = 1.4142M;
-
-        private readonly List<Position> _pathPositions = new List<Position>();
-        
-        public Path(Position start)
-        {
-            StartPosition = start;
-            EndPosition = start;
-            Distance = 0.0M;
-        }
-
-        private Path(Path source, Position position, decimal distance)
-        {
-            this.StartPosition = source.StartPosition;
-            this.EndPosition = position;
-            this.Distance = source.Distance + distance;
-            this._pathPositions.AddRange(source._pathPositions.Concat(new [] {position}));
-        }
-
-        public override string ToString()
-        {
-            return string.Format("{0} => {1} : {2}", StartPosition, EndPosition, Distance);
-        }
-
-        public Position StartPosition { get; private set; }
-
-        public Position EndPosition { get; private set; }
-
-        public decimal Distance { get; private set; }
-
-        public IReadOnlyCollection<Position> PathPositions {
-            get { return _pathPositions.AsReadOnly(); }
-        }
-
-        public Path North()
-        {
-            return new Path(this,this.EndPosition.North(), StraightDistance);
-        }
-
-        public Path NorthWest()
-        {
-            return new Path(this, this.EndPosition.NorthWest(), DiagonalDistance);
-        }
-
-        public Path NorthEast()
-        {
-            return new Path(this, this.EndPosition.NorthEast(), DiagonalDistance);
-        }
-
-        public Path South()
-        {
-            return new Path(this, this.EndPosition.South(), StraightDistance);
-        }
-
-        public Path SouthWest()
-        {
-            return new Path(this, this.EndPosition.SouthWest(), DiagonalDistance);
-        }
-
-        public Path SouthEast()
-        {
-            return new Path(this, this.EndPosition.SouthEast(), DiagonalDistance);
-        }
-
-        public Path East()
-        {
-            return new Path(this, this.EndPosition.East(), StraightDistance);
-        }
-
-        public Path West()
-        {
-            return new Path(this, this.EndPosition.West(), StraightDistance);
-        }
-    }
-
-    public class ShortestPath
-    {
-        public ShortestPath(Map map)
-        {
-        }
-
-        public IEnumerable<Path> FindPath(Position start, decimal distance)
-        {
-            var newPath = new Path(start);
-            var resultDict = new Dictionary<Position, Path> {{newPath.EndPosition, newPath}};
-            FindPaths(new Path(start), distance, resultDict);
-            return resultDict.Values.Where(x => x.Distance > 0).OrderBy(x => x.Distance);
-        }
-
-        private void FindPaths(Path path, decimal distance, Dictionary<Position,Path> coveredPositions)
-        {
-            var adjacentSpaces = new List<Path>
-                       {
-                           path.North(),
-                           path.South(),
-                           path.East(),
-                           path.West(),
-                           path.NorthEast(),
-                           path.NorthWest(),
-                           path.SouthWest(),
-                           path.SouthEast(),
-                       };
-
-            var inRangeAdjacentSpaces = adjacentSpaces
-                                        .Where(x => x.Distance <= distance)
-                                        .ToList();
-
-            var validAdjacentSpaces = new List<Path>();
-            foreach (var inRangeAdjacentSpace in inRangeAdjacentSpaces)
-            {
-                if (coveredPositions.ContainsKey(inRangeAdjacentSpace.EndPosition))
-                {
-                    if (coveredPositions[inRangeAdjacentSpace.EndPosition].Distance > inRangeAdjacentSpace.Distance)
-                    {
-                        coveredPositions[inRangeAdjacentSpace.EndPosition] = inRangeAdjacentSpace;
-                        validAdjacentSpaces.Add(inRangeAdjacentSpace);
-                    }
-                }
-                else
-                {
-                    coveredPositions.Add(inRangeAdjacentSpace.EndPosition,inRangeAdjacentSpace);
-                    validAdjacentSpaces.Add(inRangeAdjacentSpace);
-                }
-            }
-
-            validAdjacentSpaces.ForEach(x => FindPaths(x,distance,coveredPositions));
         }
     }
 }
